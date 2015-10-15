@@ -21,6 +21,8 @@ import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.spark.sql.types.{Metadata, DataType}
 import org.apache.spark.sql.catalyst.plans.logical
 
+import scala.collection.mutable.Queue
+
 
 case class NativeUDF(
                               name: String,
@@ -124,34 +126,31 @@ object ExtractNativeUDFs extends Rule[LogicalPlan] {
   override def apply(plan: LogicalPlan): LogicalPlan = plan resolveOperators {
     case plan: EvaluateNativeUDF => plan
     case plan: LogicalPlan =>
-      plan.expressions.
-        flatMap(_.collect {case udf: NativeUDF => udf} ).
-          find(_.resolved).
-            map { case udf =>
-              var evaluation: EvaluateNativeUDF = null
 
-              val newChildren = plan.children flatMap { child =>
-              // Check to make sure that the UDF can be evaluated with only the input of this child.
-              // Other cases are disallowed as they are ambiguous or would require a cartesian
-              // product.
-              if (udf.references.subsetOf(child.outputSet)) {
-                evaluation = EvaluateNativeUDF(udf, child)
-                evaluation::Nil
-              } else if (udf.references.intersect(child.outputSet).nonEmpty) {
-                sys.error(s"Invalid NativeUDF $udf, requires attributes from more than one child.")
-              } else {
-                child::Nil
-              }
-            }
+      //val (newChildren, evaluated) =
+      val udfExpressions = plan.expressions.flatMap(_.collect {case udf: NativeUDF if(udf.resolved) => udf} )
+      if(udfExpressions.nonEmpty) {
+        val newChildrenWithUdf: Seq[(Option[NativeUDF], LogicalPlan)] = plan.children map { child =>
+          udfExpressions.find(_.references.subsetOf(child.outputSet)) collect {
+            case udf => //if (udf.references.intersect(child.outputSet).nonEmpty) =>
+              println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> " + udf.name + " " + udf.toString)
+              (Some(udf),EvaluateNativeUDF(udf, child))
+            //case udf => sys.error(s"Invalid NativeUDF $udf, requires attributes from more than one child.")
+          } getOrElse (None, child)
 
-            assert(evaluation != null, "Unable to evaluate NativeUDF.  Missing input attributes.")
+        }
 
-            logical.Project(
-              plan.output, //plan.withNewChildren(newChildren)
-              plan.transformExpressions {
-                case u: NativeUDF if(u.fastEquals(udf)) => evaluation.resultAttribute
-              }.withNewChildren(newChildren)
-            )
-          } getOrElse plan
+        val (newChildren, udfandeval) = newChildrenWithUdf.partition(_._1.isEmpty)
+        val udf2eval = udfandeval.map { case (Some(udf), ev) => udf -> ev} toMap
+
+        logical.Project(
+          plan.output,
+          plan.transformExpressions {
+            case u: NativeUDF if(udf2eval.nonEmpty && u.fastEquals(udf2eval.head._1)) =>
+              udf2eval.head._2.asInstanceOf[EvaluateNativeUDF].resultAttribute
+          }.withNewChildren((newChildren ++ udfandeval).map(_._2))
+        )
+      } else plan
+
   }
 }
