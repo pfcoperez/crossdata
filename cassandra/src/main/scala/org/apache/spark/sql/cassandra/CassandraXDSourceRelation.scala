@@ -25,7 +25,7 @@ import com.datastax.spark.connector.rdd.{CassandraRDD, ReadConf}
 import com.datastax.spark.connector.util.NameTools
 import com.datastax.spark.connector.util.Quote._
 import com.datastax.spark.connector.writer.{SqlRowWriter, WriteConf}
-import com.datastax.spark.connector._
+import com.datastax.spark.connector.{FunctionCallRef => _, _}
 import com.stratio.crossdata.connector.{NativeFunctionExecutor, NativeScan}
 import com.stratio.crossdata.connector.cassandra.CassandraQueryProcessor
 import org.apache.spark.rdd.RDD
@@ -60,6 +60,8 @@ class CassandraXDSourceRelation(
   with PrunedFilteredScan
   with NativeFunctionExecutor
   with NativeScan with Logging {
+
+  import CassandraXDSourceRelation._
 
   // NativeScan implementation ~~
   override def buildScan(optimizedLogicalPlan: LogicalPlan): Option[Array[Row]] = {
@@ -142,10 +144,10 @@ class CassandraXDSourceRelation(
     udfs get(strId) map { udf =>
       val actualParams = udf.children.collect {
         case at: AttributeReference if(udfs contains at.toString) => Left(resolveUDFsReferences(at.toString, udfs).get)
-        case at: AttributeReference => Left(ColumnName(at.name))
+        case at: AttributeReference => Left(FunctionCallRef(at.name))
         case lit: Literal => Right(lit.toString)
       }
-      FunctionCallRef(udf.name, actualParams)
+      FunctionCallRef(udf.name, if(actualParams.isEmpty) Right("")::Nil else actualParams)
     }
 
 
@@ -179,7 +181,10 @@ class CassandraXDSourceRelation(
                            requiredColumns: Array[String],
                            udfs: Map[String, NativeUDF] = Map.empty): RDDType = {
     if (requiredColumns.nonEmpty) {
-      val cols = requiredColumns.map(column => resolveUDFsReferences(column, udfs).getOrElse(column: ColumnRef))
+      val cols: Seq[ColumnRef] =
+        requiredColumns.map(column =>
+            resolveUDFsReferences(column, udfs).map(callref2columref).getOrElse(column: ColumnRef)
+          )
       rdd.select(cols: _*)
     } else {
       rdd
@@ -321,4 +326,31 @@ object CassandraXDSourceRelation {
     }
     conf
   }
+
+  case class FunctionCallRef(columnName: String,
+                             actualParams: Seq[Either[FunctionCallRef, String]] = Seq.empty,
+                             alias: Option[String] = None) {
+
+    def selectedAs: String = alias.getOrElse(cqlValueName)
+    def cqlValueName: String = columnName + (if(actualParams.isEmpty) "" else s"(${resolve(actualParams, _.cqlValueName)})")
+    def cql: String = columnName + (if(actualParams.isEmpty) "" else s"(${resolve(actualParams, _.cql)})")
+
+    private def resolve(child: Seq[Either[FunctionCallRef, String]], refResolv: ColumnRef => String): String = child map {
+      case Left(cr) => refResolv(cr)
+      case Right(str) => str
+    } mkString ","
+  }
+
+  implicit def callref2columref(fref: FunctionCallRef): ColumnRef = {
+    import scala.reflect.runtime.{universe => ru}
+    val colnameMirror = ru.runtimeMirror(classOf[ColumnName].getClassLoader)
+    val cqlTerm = ru.typeOf[ColumnName].declaration(ru.newTermName("cql")).asTerm
+
+    val ret = ColumnName(fref.cqlValueName, fref.alias)
+    val reflectedRet = colnameMirror.reflect(ret)
+    val refCql = reflectedRet.reflectField(cqlTerm)
+    refCql.set(fref.cql)
+    ret
+  }
+
 }
