@@ -71,16 +71,19 @@ trait ElasticWithSharedContext extends SharedXDContextWithDataTest with ElasticS
     elasticClient
   } toOption
 
-  override val sparkRegisterTableSQL: Seq[SparkTable] = s"""|CREATE TEMPORARY TABLE $Type
-                                                            |(
-                                                            |  id INT,
-                                                            |  age INT,
-                                                            |  description STRING,
-                                                            |  enrolled BOOLEAN,
-                                                            |  name STRING,
-                                                            |  optionalField BOOLEAN,
-                                                            |  birthday DATE
-                                                            |)""".stripMargin.replaceAll("\n", " ")::Nil
+  abstract override def sparkRegisterTableSQL: Seq[SparkTable] = Seq(
+    s"""|CREATE TEMPORARY TABLE $Type
+        |(
+        |  id INT,
+        |  age INT,
+        |  description STRING,
+        |  enrolled BOOLEAN,
+        |  name STRING,
+        |  optionalField BOOLEAN,
+        |  birthday DATE
+        |)""".stripMargin.replaceAll("\n", " ")
+  )
+
 
   override val runningError: String = "ElasticSearch and Spark must be up and running"
 
@@ -113,10 +116,11 @@ trait ElasticSearchDefaultConstants {
   private lazy val config = ConfigFactory.load()
   val Index = "highschool"
   val Type = "students"
+  val TypesType = "datatypestablename"
   val ElasticHost: String = Try(config.getStringList("elasticsearch.hosts")).map(_.get(0)).getOrElse("127.0.0.1")
   val ElasticRestPort = 9200
   val ElasticNativePort = 9300
   val SourceProvider = "com.stratio.crossdata.connector.elasticsearch"
-  val ElasticClusterName: String = Try(config.getString("elasticsearch.cluster")).getOrElse("esCluster")
+  val ElasticClusterName: String = Try(config.getString("elasticsearch.cluster")).getOrElse("elasticsearch")
 
 }

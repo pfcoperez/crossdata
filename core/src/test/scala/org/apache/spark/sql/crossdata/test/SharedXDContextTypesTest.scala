@@ -54,6 +54,7 @@ trait SharedXDContextTypesTest extends SharedXDContextWithDataTest {
 
   //Template: This is the template implementation and shouldn't be modified in any specific test
 
+  // Creation and insertion of test data examples
   def doTypesTest(datasourceName: String): Unit = {
 
     for(executionType <- ExecutionType.Spark::ExecutionType.Native::Nil)
@@ -101,7 +102,7 @@ trait SharedXDContextTypesTest extends SharedXDContextWithDataTest {
     SparkSQLColdDef("mapstruct", "MAP<STRING, STRUCT<structField1: DATE, structField2: INT>>", _ shouldBe a[Map[_,_]])
   )
 
-  override def sparkRegisterTableSQL: Seq[SparkTable] = super.sparkRegisterTableSQL :+ {
+  abstract override def sparkRegisterTableSQL: Seq[SparkTable] = super.sparkRegisterTableSQL :+ {
     val fields = (sparkAdditionalKeyColumns ++ typesSet) map {
       case SparkSQLColdDef(name, tpe, _) => s"$name $tpe"
     } mkString ", "
