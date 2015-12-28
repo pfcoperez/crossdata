@@ -37,7 +37,16 @@ import org.apache.spark.sql.types.StructField
 import org.apache.spark.sql.types.StructType
 
 
-private[sql] object XDDataFrame {
+object XDDataFrame {
+
+  implicit def df2xdf(df: DataFrame): XDDataFrame = df match {
+    case x: XDDataFrame =>
+      throw new Exception(("A"*10 + "\n")*10)
+      //x
+    case x: DataFrame =>
+      throw new Exception(("B"*10 + "\n")*10)
+      //new XDDataFrame(df.sqlContext, df.logicalPlan)
+  }
 
   def apply(sqlContext: SQLContext, logicalPlan: LogicalPlan): DataFrame = {
     new XDDataFrame(sqlContext, logicalPlan)

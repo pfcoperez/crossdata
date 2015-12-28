@@ -18,8 +18,10 @@ package org.apache.spark.sql.crossdata.test
 import com.stratio.crossdata.test.BaseXDTest
 
 import org.apache.spark.sql.Row
-import org.apache.spark.sql.crossdata.{XDDataFrame, ExecutionType}
+import org.apache.spark.sql.crossdata.ExecutionType
 import org.apache.spark.sql.crossdata.test.SharedXDContextWithDataTest.SparkTable
+import org.apache.spark.sql.crossdata.XDDataFrame._
+
 
 /* Mix this trait in a type test class to get most of the type test done.
  * Its based on SharedXDContextWithDataTest thus filling most of that template slots and generating new entry points
@@ -69,7 +71,7 @@ trait SharedXDContextTypesTest extends SharedXDContextWithDataTest {
     if(typesSet.map(_.colname) contains "structofstruct")
       it should "provide flattened column names through the `annotatedCollect` method" in {
         val dataFrame = sql("SELECT structofstruct.struct1.structField1 FROM typesCheckTable")
-        val (_, colNames) = dataFrame.asInstanceOf[XDDataFrame].annotatedCollect()
+        val (_, colNames) = dataFrame.annotatedCollect()
         colNames.head shouldBe "structofstruct.struct1.structField1"
       }
   }

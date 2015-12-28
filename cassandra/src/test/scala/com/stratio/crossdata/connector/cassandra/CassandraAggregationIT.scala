@@ -19,6 +19,7 @@ import org.apache.spark.sql.crossdata.ExecutionType._
 import org.apache.spark.sql.crossdata.exceptions.CrossdataException
 import org.junit.runner.RunWith
 import org.scalatest.junit.JUnitRunner
+import org.apache.spark.sql.crossdata.XDDataFrame._
 
 @RunWith(classOf[JUnitRunner])
 class CassandraAggregationIT extends CassandraWithSharedContext {

@@ -81,5 +81,6 @@ trait SharedXDContextTest extends XDTestUtils {
     }
   }
 
-  implicit def dataFrameToXDFrame(dataFrame: DataFrame): XDDataFrame = new XDDataFrame(dataFrame.sqlContext, dataFrame.queryExecution.logical)
+  //implicit def dataFrameToXDFrame(dataFrame: DataFrame): XDDataFrame = new XDDataFrame(dataFrame.sqlContext,
+  // dataFrame.queryExecution.logical)
 }

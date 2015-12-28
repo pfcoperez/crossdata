@@ -21,7 +21,8 @@ import com.stratio.crossdata.common.SQLCommand
 import com.stratio.crossdata.common.result.{SuccessfulQueryAnnotatedResult, ErrorResult, SuccessfulQueryResult}
 import com.stratio.crossdata.server.config.ServerConfig
 import org.apache.log4j.Logger
-import org.apache.spark.sql.crossdata.{XDDataFrame, XDContext}
+import org.apache.spark.sql.crossdata.XDContext
+import org.apache.spark.sql.crossdata.XDDataFrame._
 
 
 object ServerActor {
@@ -40,7 +41,7 @@ class ServerActor(cluster: Cluster, xdContext: XDContext) extends Actor with Ser
         val df = xdContext.sql(query)
         val response = if(withColnames) {
           //TODO: Remove response differentiation when a better solution than PR#257 has been found
-          val (rows, cols) = df.asInstanceOf[XDDataFrame].annotatedCollect()
+          val (rows, cols) = df.annotatedCollect()
           SuccessfulQueryAnnotatedResult(sqlCommand.queryId, rows, df.schema, cols)
         } else SuccessfulQueryResult(sqlCommand.queryId, df.collect(), df.schema)
         sender ! response
