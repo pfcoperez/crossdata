@@ -15,15 +15,14 @@
  */
 package com.stratio.crossdata.driver
 
-import java.util.concurrent.TimeUnit.SECONDS
-
 import akka.actor.ActorSystem
 import akka.contrib.pattern.ClusterClient
 import akka.util.Timeout
 
 import com.stratio.crossdata.common.result.{ErrorResult, SuccessfulQueryResult}
 
-import com.stratio.crossdata.common.{SQLCommand, SQLResult}
+import com.stratio.crossdata.common.{ControlCommand, SQLResult, SQLCommand}
+
 import com.stratio.crossdata.driver.actor.ProxyActor
 import com.stratio.crossdata.driver.config.DriverConfig
 import com.stratio.crossdata.driver.config.DriverConfig.DriverConfigHosts
@@ -148,6 +147,9 @@ class Driver(properties: java.util.Map[String, ConfigValue], flattenTables: Bool
                  retries: Int = defaultRetries): Future[SQLResult] = {
     RetryPolitics.askRetry(proxyActor, sqlCommand, timeout, retries)
   }
+
+  //TODO
+  def controlRequest(command: ControlCommand): Unit = proxyActor ! command
 
 
   def listDatabases(): Seq[String] = {

@@ -20,8 +20,16 @@ import java.util.UUID
 
 import org.apache.spark.sql.Row
 
+import scala.concurrent.duration.Duration
+
 //TODO: Remove `retrieveColumnNames` when a better alternative to PR#257 has been found
-case class SQLCommand(query: String, queryId: UUID = UUID.randomUUID(), retrieveColumnNames: Boolean = false)
+case class SQLCommand(query: String, queryId: UUID = UUID.randomUUID(),
+                      flattenResult: Boolean = false,
+                      timeout: Duration = Duration.Inf)
+
+trait ControlCommand
+case class CancelQueryExecution(queryId: UUID) extends ControlCommand
+
 
 trait SQLResult extends Serializable {
   val queryId: UUID

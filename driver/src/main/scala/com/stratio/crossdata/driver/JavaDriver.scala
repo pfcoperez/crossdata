@@ -16,8 +16,7 @@
 package com.stratio.crossdata.driver
 
 import akka.util.Timeout
-import com.stratio.crossdata.common.SQLCommand
-import com.stratio.crossdata.common.SQLResult
+import com.stratio.crossdata.common.{ControlCommand, SQLResult, SQLCommand}
 import com.stratio.crossdata.driver.config.DriverConfig.DriverConfigHosts
 import com.stratio.crossdata.driver.metadata.FieldMetadata
 import com.stratio.crossdata.driver.metadata.JavaTableName
@@ -51,6 +50,16 @@ class JavaDriver(properties: java.util.Map[String, ConfigValue], flattenTables: 
 
   def syncQuery(sqlCommand: SQLCommand, timeout: Timeout, retries: Int): SQLResult = {
     scalaDriver.syncQuery(sqlCommand, timeout, retries)
+  }
+
+  //TODO
+  def asyncQuery(sqlCommand: SQLCommand, timeout: Timeout, retries: Int): Unit = {
+    scalaDriver.asyncQuery(sqlCommand, timeout, retries)
+  }
+
+  //TODO
+  def controlRequest(command: ControlCommand): Unit = {
+    scalaDriver.controlRequest(command)
   }
 
   def listDatabases(): java.util.List[String] = {

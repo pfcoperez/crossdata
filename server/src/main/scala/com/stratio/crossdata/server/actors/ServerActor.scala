@@ -15,26 +15,23 @@
  */
 package com.stratio.crossdata.server.actors
 
+import java.util.UUID
+
 import akka.actor.SupervisorStrategy.{Stop, Restart}
 import akka.actor._
 import akka.cluster.Cluster
-import com.stratio.crossdata.common.SQLCommand
-import com.stratio.crossdata.common.result.{ErrorResult, SuccessfulQueryResult}
+import com.stratio.crossdata.common.{CancelQueryExecution, SQLCommand}
+import com.stratio.crossdata.server.actors.JobActor.Commands.StartJob
 import com.stratio.crossdata.server.actors.JobActor.Events.{JobCompleted, JobFailed}
+import com.stratio.crossdata.server.actors.ServerActor.JobId
 import com.stratio.crossdata.server.config.ServerConfig
 import org.apache.log4j.Logger
-import org.apache.spark.sql.crossdata.{XDDataFrame, XDContext}
+import org.apache.spark.sql.crossdata.XDContext
 
 object ServerActor {
-
-
-
   def props(cluster: Cluster, xdContext: XDContext): Props = Props(new ServerActor(cluster, xdContext))
 
-  object Messages {
-
-
-  }
+  case class JobId(requester: ActorRef, queryId: UUID)
 
 }
 
@@ -42,22 +39,34 @@ class ServerActor(cluster: Cluster, xdContext: XDContext) extends Actor with Ser
 
   override lazy val logger = Logger.getLogger(classOf[ServerActor])
 
-  def receive: Receive = {
-    case sqlCommand @ SQLCommand(query, _, withColnames) =>
+  override def receive: Actor.Receive = receive(Map.empty)
+
+  private def receive(jobsById: Map[JobId, ActorRef]): Receive = {
+    // Commands
+    case sqlCommand @ SQLCommand(query, _, withColnames, timeout) =>
       logger.debug(s"Query received ${sqlCommand.queryId}: ${sqlCommand.query}. Actor ${self.path.toStringWithoutAddress}")
-      context.actorOf(JobActor.props(xdContext, sqlCommand, sender()))
+      val jobActor = context.actorOf(JobActor.props(xdContext, sqlCommand, sender(), timeout))
+      context.become(receive(jobsById + (JobId(sender(), sqlCommand.queryId) -> jobActor)))
+      jobActor ! StartJob
+    case cqCommand @ CancelQueryExecution(queryId) =>
+      val jid = JobId(sender(), queryId)
+      jobsById.get(jid) foreach { job =>
+        job ! Kill
+        context.become(receive(jobsById - jid))
+      }
+    // Events
     case JobFailed(e) =>
       logger.error(e.getMessage)
-      context.stop(sender())
+      //context.stop(sender())
     case JobCompleted =>
-      context.stop(sender()) //TODO: This could be changed so done works could be inquired about their state
+      //TODO: This could be changed so done works could be inquired about their state
+      context.stop(sender())
     case any =>
       logger.error(s"Something is going wrong! Unknown message: $any")
   }
 
-  //TODO: Use number of tries and timeout configuration parameters
-  override def supervisorStrategy: SupervisorStrategy = OneForOneStrategy() {
-    case _: ActorKilledException => Stop  //In the future it might be interesting to add the
+  override def supervisorStrategy: SupervisorStrategy = OneForOneStrategy(retryNoAttempts, retryCountWindow) {
+    case _: ActorKilledException => Stop
     case _ => Restart //Crashed job gets restarted
   }
 }

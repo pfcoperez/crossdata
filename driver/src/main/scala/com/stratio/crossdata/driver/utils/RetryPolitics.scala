@@ -19,14 +19,18 @@ import akka.actor.ActorRef
 import akka.pattern.ask
 import akka.util.Timeout
 import com.stratio.crossdata.common.SQLResult
+
 import org.apache.log4j.Logger
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.concurrent.TimeoutException
-import scala.concurrent.duration.{_}
+import scala.concurrent.duration._
 import scala.language.postfixOps
 
+/* TODO: Remove active `RetryPolitics` since they won't be of any use once the retry policy becomes
+    part of the command message.
+ */
 object RetryPolitics {
 
   lazy val RetryLogger = Logger.getLogger(getClass)
