@@ -21,7 +21,7 @@ import akka.actor.SupervisorStrategy.{Stop, Restart}
 import akka.actor._
 import akka.cluster.Cluster
 import com.stratio.crossdata.common.{CancelQueryExecution, SQLCommand}
-import com.stratio.crossdata.server.actors.JobActor.Commands.StartJob
+import com.stratio.crossdata.server.actors.JobActor.Commands.CancelJob
 import com.stratio.crossdata.server.actors.JobActor.Events.{JobCompleted, JobFailed}
 import com.stratio.crossdata.server.actors.ServerActor.JobId
 import com.stratio.crossdata.server.config.ServerConfig
@@ -46,13 +46,13 @@ class ServerActor(cluster: Cluster, xdContext: XDContext) extends Actor with Ser
     case sqlCommand @ SQLCommand(query, _, withColnames, timeout) =>
       logger.debug(s"Query received ${sqlCommand.queryId}: ${sqlCommand.query}. Actor ${self.path.toStringWithoutAddress}")
       val jobActor = context.actorOf(JobActor.props(xdContext, sqlCommand, sender(), timeout))
-      context.become(receive(jobsById + (JobId(sender(), sqlCommand.queryId) -> jobActor)))
-      jobActor ! StartJob
+      context.become(receive(jobsById + (JobId(/*sender()*/ jobActor, sqlCommand.queryId) -> jobActor)))
+      //jobActor ! StartJob
     case cqCommand @ CancelQueryExecution(queryId) =>
       val jid = JobId(sender(), queryId)
       jobsById.get(jid) foreach { job =>
-        job ! Kill
-        context.become(receive(jobsById - jid))
+        job ! CancelJob
+        //context.become(receive(jobsById - jid))
       }
     // Events
     case JobFailed(e) =>
@@ -60,13 +60,12 @@ class ServerActor(cluster: Cluster, xdContext: XDContext) extends Actor with Ser
       //context.stop(sender())
     case JobCompleted =>
       //TODO: This could be changed so done works could be inquired about their state
-      context.stop(sender())
+      //context.stop(sender())
     case any =>
       logger.error(s"Something is going wrong! Unknown message: $any")
   }
 
   override def supervisorStrategy: SupervisorStrategy = OneForOneStrategy(retryNoAttempts, retryCountWindow) {
-    case _: ActorKilledException => Stop
     case _ => Restart //Crashed job gets restarted
   }
 }
