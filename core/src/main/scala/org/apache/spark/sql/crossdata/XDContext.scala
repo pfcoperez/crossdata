@@ -76,9 +76,8 @@ class XDContext private (@transient val sc: SparkContext,
 
   catalogConfig = xdConfig.getConfig(CoreConfig.CatalogConfigKey)
 
-
   @transient
-  override protected[sql] lazy val catalog: XDCatalog = {
+  override lazy val catalog: XDCatalog = {
     import XDContext.CaseSensitive
     import XDContext.CatalogClass
     import XDContext.DerbyClass

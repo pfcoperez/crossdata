@@ -32,6 +32,7 @@ import com.stratio.crossdata.common.{SecureCommand, SQLCommand}
 import com.stratio.crossdata.server.actors.JobActor.Events.{JobCompleted, JobFailed}
 import com.stratio.crossdata.server.config.ServerConfig
 import org.apache.log4j.Logger
+import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.crossdata.XDContext
 
 import scala.concurrent.duration.FiniteDuration
@@ -48,8 +49,25 @@ object ServerActor {
   protected case class ManagementEnvelope(command: ControlCommand, source: ActorRef)
 
   private object ManagementMessages {
-    case class DelegateCommand(scommand: SecureCommand, broadcaster: ActorRef)
+
+    trait BroadcastMessage { val broadcaster: ActorRef }
+
+    object BroadcastMessage {
+      def unapply(broadcaster: ActorRef): BroadcastMessage = new BroadcastMessage {
+        override val broadcaster: ActorRef = broadcaster
+      }
+    }
+
+    case class DelegateCommand(scommand: SecureCommand, broadcaster: ActorRef) extends BroadcastMessage
+
     case class FinishJob(jobActor: ActorRef)
+
+    trait CatalogCacheUpdate { val tableName: String }
+    case class CacheTableAddition(tableName: String, logicalPlan: LogicalPlan,
+                                  broadcaster: ActorRef) extends CatalogCacheUpdate with BroadcastMessage
+    case class CacheTableDeletion(tableName: String,
+                                  broadcaster: ActorRef) extends CatalogCacheUpdate with BroadcastMessage
+
   }
 
   case class State(jobsById: Map[JobId, ActorRef])
@@ -71,9 +89,30 @@ class ServerActor(cluster: Cluster, xdContext: XDContext) extends Actor with Ser
     // Subscribe to the management distributed topic
     mediator ! Subscribe(managementTopic, self)
 
-    // Subscribe to disassociation events in the cluster
+    // Subscribe to disassociation events in the clustergetDbTableName(processTableIdentifier(tableIdentifier))
     cluster.subscribe(self, InitialStateAsSnapshot, classOf[DisassociatedEvent])
 
+    // Subscribe to table cache changes
+
+    xdContext.catalog.subscribeToChanges(addedTableEntry)
+    xdContext.catalog.subscribeToChanges(removedTableEntry)
+
+  }
+
+  override def postStop(): Unit = {
+    super.postStop()
+    cluster.unsubscribe(self)
+
+    xdContext.catalog.cancelSubscription(addedTableEntry)
+    xdContext.catalog.cancelSubscription(removedTableEntry)
+  }
+
+  private val addedTableEntry: ((String, LogicalPlan)) => Unit = {
+    (name: String, plan: LogicalPlan) => mediator ! Publish(managementTopic, CacheTableAddition(name, plan, self))
+  }
+
+  private val removedTableEntry: String => Unit = {
+    name => mediator ! Publish(managementTopic, CacheTableDeletion(name, self))
   }
 
   // Actor behaviours
@@ -107,8 +146,7 @@ class ServerActor(cluster: Cluster, xdContext: XDContext) extends Actor with Ser
 
   // Broadcast messages treatment
   def broadcastRequestsRec(st: State): Receive = {
-    case DelegateCommand(_, broadcaster) if broadcaster == self => //Discards from this server broadcast delegated-commands
-
+    case BroadcastMessage(broadcaster) if broadcaster == self => //Discards from this server broadcast messafes
     case DelegateCommand(cmd, broadcaster) if broadcaster != self =>
       cmd match { // Inner pattern matching for future delegated command validations
         case sc @ SecureCommand(CancelQueryExecution(queryId), Session(_, requester)) =>

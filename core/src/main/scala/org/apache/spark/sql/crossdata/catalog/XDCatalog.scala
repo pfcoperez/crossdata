@@ -17,8 +17,7 @@ package org.apache.spark.sql.crossdata.catalog
 
 import org.apache.spark.Logging
 import org.apache.spark.sql.catalyst.analysis.Catalog
-import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
-import org.apache.spark.sql.catalyst.plans.logical.Subquery
+import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, Subquery}
 import org.apache.spark.sql.catalyst.CatalystConf
 import org.apache.spark.sql.catalyst.SimpleCatalystConf
 import org.apache.spark.sql.catalyst.TableIdentifier
@@ -43,7 +42,7 @@ abstract class XDCatalog(val conf: CatalystConf = new SimpleCatalystConf(true),
 
   // TODO We should use a limited cache
 
-  val tables = new mutable.HashMap[String, LogicalPlan]()
+  private[sql] val tables = new mutable.HashMap[String, LogicalPlan]()
 
 
   override def tableExists(tableIdentifier: Seq[String]): Boolean = {
@@ -129,19 +128,21 @@ abstract class XDCatalog(val conf: CatalystConf = new SimpleCatalystConf(true),
   }
 
   override def registerTable(tableIdentifier: Seq[String], plan: LogicalPlan): Unit = {
-    val tableIdent = processTableIdentifier(tableIdentifier)
-    tables.put(getDbTableName(tableIdent), plan)
+    val tName = getDbTableName(processTableIdentifier(tableIdentifier))
+    tables.put(tName, plan)
+    additionCallbacks foreach(_(tName -> plan))
   }
 
   override def unregisterTable(tableIdentifier: Seq[String]): Unit = {
-    val tableIdent = processTableIdentifier(tableIdentifier)
-    tables remove getDbTableName(tableIdent)
+    val tName = getDbTableName(processTableIdentifier(tableIdentifier))
+    tables remove tName
+    deletionCallbacks foreach(_(tName))
   }
 
-
-
-  override def unregisterAllTables(): Unit =
+  override def unregisterAllTables(): Unit = {
+    for((k, _) <- tables; cb <- deletionCallbacks) cb(k)
     tables.clear()
+  }
 
   override def refreshTable(tableIdentifier: TableIdentifier): Unit = {
     throw new UnsupportedOperationException
@@ -158,6 +159,25 @@ abstract class XDCatalog(val conf: CatalystConf = new SimpleCatalystConf(true),
   }
 
   // Defined by Crossdata
+
+  type SetCallback = ((String, LogicalPlan)) => Unit
+  type RemoveCallback = String => Unit
+
+  //TODO, WARNING: SIDE EFFECT, NOT THREAD SAFE
+  final def subscribeToChanges[T](callback: Function[T, Unit]): Unit =
+    (callback: @unchecked) match {
+      case setcb: SetCallback => additionCallbacks += setcb
+      case remcb: RemoveCallback => deletionCallbacks += remcb
+    }
+  //TODO, WARNING: SIDE EFFECT, NOT THREAD SAFE
+  final def cancelSubscription[T](callback: Function[T, Unit]): Unit =
+    (callback: @unchecked) match {
+      case setcb: SetCallback => additionCallbacks -= setcb
+      case remcb: RemoveCallback => deletionCallbacks -= remcb
+    }
+
+  private var additionCallbacks: Set[SetCallback] = Set()
+  private var deletionCallbacks: Set[RemoveCallback] = Set()
 
   final def persistTable(crossdataTable: CrossdataTable, table: LogicalPlan): Unit = {
     val tableIdentifier = TableIdentifier(crossdataTable.tableName, crossdataTable.dbName).toSeq
