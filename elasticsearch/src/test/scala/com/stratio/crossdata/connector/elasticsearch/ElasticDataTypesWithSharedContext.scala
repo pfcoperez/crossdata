@@ -67,11 +67,12 @@ trait ElasticDataTypesWithSharedContext extends SharedXDContextWithDataTest with
 
   )
 
-  override protected def saveTestData: Unit = for (a <- 1 to 1) {
-    client.get.execute {
+  override protected def saveTestData: Unit = client.map { dbCli =>
+    createIndex(dbCli, Index, typeMapping())
+    dbCli.execute {
       index into Index / Type fields( dataTest.map( colMetadata => (colMetadata.fieldName,colMetadata.data())): _*)
     }.await
-    client.get.execute {
+    dbCli.execute {
       flush index Index
     }.await
   }
@@ -85,7 +86,6 @@ trait ElasticDataTypesWithSharedContext extends SharedXDContextWithDataTest with
     logInfo(s"Connection to elastic search, ElasticHost: $ElasticHost, ElasticNativePort:$ElasticNativePort, ElasticClusterName $ElasticClusterName")
     val settings = Settings.settingsBuilder().put("cluster.name", ElasticClusterName).build()
     val elasticClient = ElasticClient.transport(settings, ElasticsearchClientUri(ElasticHost, ElasticNativePort))
-    createIndex(elasticClient, Index, typeMapping())
     elasticClient
   } toOption
 
