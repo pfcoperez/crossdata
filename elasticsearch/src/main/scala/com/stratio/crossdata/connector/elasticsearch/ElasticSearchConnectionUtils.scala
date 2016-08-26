@@ -15,10 +15,9 @@
  */
 package com.stratio.crossdata.connector.elasticsearch
 
-import com.sksamuel.elastic4s.{ElasticsearchClientUri, ElasticClient}
+import com.sksamuel.elastic4s.{ElasticClient, ElasticsearchClientUri}
 import com.stratio.crossdata.connector.TableInventory.Table
 import com.stratio.crossdata.connector.elasticsearch.DefaultSource._
-import org.apache.spark.sql.types._
 import org.elasticsearch.client.IndicesAdminClient
 import org.elasticsearch.cluster.metadata.MappingMetaData
 import org.elasticsearch.common.collect.ImmutableOpenMap
@@ -98,35 +97,32 @@ object ElasticSearchConnectionUtils {
 
   }
 
-
-  private def getIndexDetails(indexName:String, indexData: ImmutableOpenMap[String, MappingMetaData]): Seq[Table] ={
-    indexData.keys().map(typeES => new Table(typeES.value, Some(indexName), Some(buildStructType(indexData.get(typeES.value))))).toSeq
+  private def getIndexDetails(indexName: String, indexData: ImmutableOpenMap[String, MappingMetaData]): Seq[Table] = {
+    val schema = None // Elasticsearch 'datasource' is already able to infer the schema
+    indexData.keys().map(typeES => new Table(typeES.value, Some(indexName), schema)).toSeq
+      case "short" => ShortType
+      case "byte" => ByteType
   }
 
-  private def convertType(typeName:String): DataType = {
+  private def buildStructType(
+                               properties: java.util.Map[String,java.util.Map[String, _]]
+                             ): StructType = {
+    val fields: Seq[StructField] = properties.map {
+      case (colName, propertyValueMap) if propertyValueMap contains "properties" =>
+        StructField(
+          colName,
+          buildStructType(
+            propertyValueMap.get("properties").asInstanceOf[java.util.Map[String, java.util.Map[String, _]]]
+          )
+        )
+      case (colName, propertyValueMap) =>
+        StructField(colName, convertType(propertyValueMap.get("type").asInstanceOf[String]), false)
+    } toSeq
 
-    typeName match {
-      case "string"=> StringType
-      case "integer" => IntegerType
-      case "date" => DateType
-      case "boolean" => BooleanType
-      case "double" => DoubleType
-      case "long" => LongType
-      case "float" => FloatType
-      case "null" => NullType
-      case _ => throw new RuntimeException (s"The type $typeName isn't supported yet in Elasticsearch connector.")
-    }
 
-  }
 
-  private def buildStructType(mapping: MappingMetaData): StructType ={
+  private def buildStructType(mapping: MappingMetaData): StructType = buildStructType(
+    mapping.sourceAsMap().get("properties").asInstanceOf[java.util.Map[String,java.util.Map[String, _]]]
+  )
 
-    val esFields = mapping.sourceAsMap().get("properties").asInstanceOf[java.util.LinkedHashMap[String,java.util.LinkedHashMap[String, String]]].toMap
-
-    val fields: Seq[StructField] = esFields.map {
-          case (colName, propertyValueMap) => StructField(colName, convertType(propertyValueMap.get("type")), false)
-    }(collection.breakOut)
-
-    StructType(fields)
-  }
 }
