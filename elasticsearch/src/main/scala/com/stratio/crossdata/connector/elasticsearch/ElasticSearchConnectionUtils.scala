@@ -100,29 +100,6 @@ object ElasticSearchConnectionUtils {
   private def getIndexDetails(indexName: String, indexData: ImmutableOpenMap[String, MappingMetaData]): Seq[Table] = {
     val schema = None // Elasticsearch 'datasource' is already able to infer the schema
     indexData.keys().map(typeES => new Table(typeES.value, Some(indexName), schema)).toSeq
-      case "short" => ShortType
-      case "byte" => ByteType
   }
-
-  private def buildStructType(
-                               properties: java.util.Map[String,java.util.Map[String, _]]
-                             ): StructType = {
-    val fields: Seq[StructField] = properties.map {
-      case (colName, propertyValueMap) if propertyValueMap contains "properties" =>
-        StructField(
-          colName,
-          buildStructType(
-            propertyValueMap.get("properties").asInstanceOf[java.util.Map[String, java.util.Map[String, _]]]
-          )
-        )
-      case (colName, propertyValueMap) =>
-        StructField(colName, convertType(propertyValueMap.get("type").asInstanceOf[String]), false)
-    } toSeq
-
-
-
-  private def buildStructType(mapping: MappingMetaData): StructType = buildStructType(
-    mapping.sourceAsMap().get("properties").asInstanceOf[java.util.Map[String,java.util.Map[String, _]]]
-  )
 
 }
