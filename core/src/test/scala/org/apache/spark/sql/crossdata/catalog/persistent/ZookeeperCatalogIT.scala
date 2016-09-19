@@ -36,7 +36,10 @@ class ZookeeperCatalogIT extends {
     ZookeeperConnection.fold(zkResourceConfig) {connectionString =>
       zkResourceConfig.flatMap(resourceConfig =>
         Option(resourceConfig.withValue(ZookeeperConnectionKey, ConfigValueFactory.fromAnyRef(connectionString))))
-    }
+    } map (
+      _.withValue(CoreConfig.CatalogClassConfigKey , ConfigValueFactory.fromAnyRef(CoreConfig.ZookeeperClass))
+    )
+    
   }
 
 }
