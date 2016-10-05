@@ -352,22 +352,6 @@ class CrossdataServer(progrConfig: Option[Config] = None) extends ServerConfig {
       implicit val materializer = ActorMaterializer()
       val httpServerActor = new CrossdataHttpServer(finalConfig, serverActor, actorSystem)
 
-      bindingFuture = if(serverConfig.getBoolean(ServerConfig.AkkaHttpTLS.TlsEnable)){
-        val host = serverConfig.getString(ServerConfig.AkkaHttpTLS.TlsHost)
-        val port = serverConfig.getInt(ServerConfig.AkkaHttpTLS.TlsPort)
-        val context = getTlsContext
-
-        logger.info(s"Securized server with client certificate authentication on https://$host:$port")
-
-        Http().setDefaultServerHttpContext(context)
-        Option(Http().bindAndHandle(httpServerActor.route, host, port, connectionContext = context))
-
-      } else {
-        val host = serverConfig.getString(ServerConfig.Host)
-      	val port = serverConfig.getInt(ServerConfig.HttpServerPort)
-        Option(Http().bindAndHandle(httpServerActor.route, host, port))
-      }
-
       bindingFuture = Some {
         if (serverConfig.getBoolean(ServerConfig.AkkaHttpTLS.TlsEnable)) {
           val host = serverConfig.getString(ServerConfig.AkkaHttpTLS.TlsHost)
