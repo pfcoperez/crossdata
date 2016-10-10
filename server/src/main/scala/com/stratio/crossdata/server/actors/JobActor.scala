@@ -22,7 +22,7 @@ import com.stratio.common.utils.concurrent.Cancellable
 import com.stratio.crossdata.common.result.{ErrorSQLResult, SuccessfulSQLResult}
 import com.stratio.crossdata.common.{QueryCancelledReply, SQLCommand, SQLReply}
 import com.stratio.crossdata.server.actors.JobActor.Commands.{CancelJob, GetJobStatus, StartJob}
-import com.stratio.crossdata.server.actors.JobActor.Events.{JobCompleted, JobFailed}
+import com.stratio.crossdata.server.actors.JobActor.Events.{JobCancelled, JobCompleted, JobFailed}
 import com.stratio.crossdata.server.actors.JobActor.{ProlificExecutor, Task}
 import org.apache.log4j.Logger
 import org.apache.spark.sql.crossdata.{XDContext, XDDataFrame, XDSession}
@@ -48,6 +48,7 @@ object JobActor {
   object Events {
 
     case object JobCompleted extends JobEvent
+    case object JobCancelled extends JobEvent
 
     case class JobFailed(err: Throwable) extends JobEvent
 
@@ -59,7 +60,7 @@ object JobActor {
 
     case object GetJobStatus
 
-    case object CancelJob
+    case class CancelJob(by: Option[ActorRef])
 
     case object StartJob
   }
@@ -72,7 +73,7 @@ object JobActor {
     * Cancelled or Failed task.
     * @param runningTask [[Cancellable]] wrapping a [[scala.concurrent.Future]] which acts as a Spark driver.
     */
-  case class State(runningTask: Option[Cancellable[SQLReply]]) {
+  case class State(runningTask: Option[Cancellable[SQLReply]], pendingCancelConfirmations: Seq[ActorRef] = Seq.empty) {
     import JobStatus._
     def getStatus: JobStatus = runningTask map { task =>
       task.future.value map {
@@ -119,13 +120,13 @@ class JobActor(
       import context.dispatcher
 
       val runningTask = launchTask
+
       runningTask.future onComplete {
         case Success(queryRes) =>
           requester ! queryRes
           self ! JobCompleted
         case Failure(_: CancellationException) => // Job cancellation
-          requester ! QueryCancelledReply(command.requestId)
-          self ! JobCompleted
+          self ! JobCancelled
         case Failure(e: ExecutionException) => self ! JobFailed(e.getCause) // Spark exception
         case Failure(reason) => self ! JobFailed(reason) // Job failure
       }
@@ -139,11 +140,15 @@ class JobActor(
 
       context.become(receive(st.copy(runningTask = Some(runningTask))))
 
-    case CancelJob =>
+    case CancelJob(by) =>
+
       st.runningTask.foreach{ tsk =>
         logger.debug(s"Cancelling ${self.path}'s task ")
         tsk.cancel()
       }
+
+      println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> " + by)
+      context.become(receive(st.copy(pendingCancelConfirmations = by.toSeq ++ st.pendingCancelConfirmations)))
 
     case GetJobStatus =>
       sender ! st.getStatus
@@ -156,8 +161,14 @@ class JobActor(
       requester ! SQLReply(command.requestId, ErrorSQLResult(e.getMessage, Some(new Exception(e.getMessage))))
       throw e //Let It Crash: It'll be managed by its supervisor
     case JobCompleted if sender == self =>
-      logger.debug(s"Completed or cancelled ${self.path} task")
+      logger.debug(s"Completed ${self.path} task")
       context.parent ! JobCompleted
+    case JobCancelled if sender == self =>
+      logger.debug(s"Cancelled ${self.path} task")
+      context.become(receive(st.copy(pendingCancelConfirmations = Seq.empty)))
+      /*(requester +:*/ (st.pendingCancelConfirmations) foreach (_ ! QueryCancelledReply(command.requestId))
+
+      context.parent ! JobCancelled
   }
 
   private def launchTask: Cancellable[SQLReply] = {

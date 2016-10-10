@@ -27,7 +27,7 @@ import com.stratio.crossdata.common.security.Session
 import com.stratio.crossdata.common.util.akka.keepalive.KeepAliveMaster.{DoCheck, HeartbeatLost}
 import com.stratio.crossdata.common.{CommandEnvelope, SQLCommand, _}
 import com.stratio.crossdata.server.actors.JobActor.Commands.{CancelJob, StartJob}
-import com.stratio.crossdata.server.actors.JobActor.Events.{JobCompleted, JobFailed}
+import com.stratio.crossdata.server.actors.JobActor.Events.{JobCancelled, JobCompleted, JobFailed}
 import com.stratio.crossdata.server.config.ServerConfig
 import org.apache.log4j.Logger
 import org.apache.spark.sql.crossdata.session.{HazelcastSessionProvider, XDSessionProvider}
@@ -108,6 +108,7 @@ class ServerActor(cluster: Cluster, sessionProvider: XDSessionProvider)
     case CommandEnvelope(sqlCommand@SQLCommand(query, queryId, withColnames, timeout), session@Session(id, _), _) =>
       logger.debug(s"Query received $queryId: $query. Actor ${self.path.toStringWithoutAddress}")
       logger.debug(s"Session identifier $session")
+      println(" > >    > >  >    >  QUERY BY  " + requester)
       sessionProvider.session(id) match {
         case Success(xdSession) =>
           val jobActor = context.actorOf(JobActor.props(xdSession, sqlCommand, sender(), timeout))
@@ -132,7 +133,8 @@ class ServerActor(cluster: Cluster, sessionProvider: XDSessionProvider)
         sender ! SQLReply(addAppCommand.requestId, ErrorSQLResult("App can't be stored in the catalog"))
 
     case CommandEnvelope(cc@CancelQueryExecution(queryId), session@Session(id, _), _) =>
-      st.jobsById(JobId(id, queryId)) ! CancelJob
+      st.jobsById(JobId(id, queryId)) ! CancelJob(Some(sender()))
+
   }
 
 
@@ -215,7 +217,7 @@ class ServerActor(cluster: Cluster, sessionProvider: XDSessionProvider)
       logger.error(e.getMessage, e)
       sentenceToDeath(sender())
 
-    case JobCompleted =>
+    case JobCompleted | JobCancelled =>
       sentenceToDeath(sender())
 
     case FinishJob(who) =>

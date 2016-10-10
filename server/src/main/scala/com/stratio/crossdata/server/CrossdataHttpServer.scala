@@ -128,7 +128,9 @@ class CrossdataHttpServer(config: Config, serverActor: ActorRef, implicit val sy
                   complete(StatusCodes.ServerError, s"Request ids do not match: (${rq.cmd.requestId}, $requestId)")
                 case Success(reply: ServerReply) =>
                   reply match {
-                    case qcr: QueryCancelledReply => complete(qcr)
+                    case qcr: QueryCancelledReply =>
+                      println("DO COMPLETE WITH " + qcr)
+                      complete(qcr)
                     case _ => complete(reply)
                   }
                 case other => complete(StatusCodes.ServerError, s"Internal XD server error: $other")
