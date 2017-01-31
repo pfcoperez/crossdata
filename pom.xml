@@ -109,7 +109,7 @@
 
     <properties>
         <spark.version>2.1.0</spark.version>
-        <scalatest.version>2.2.5</scalatest.version>
+        <scalatest.version>3.0.1</scalatest.version>
         <easymock.version>3.4</easymock.version>
         <coverage.data.dir>${project.build.outputDirectory}</coverage.data.dir>
         <config.version>1.2.1</config.version>
@@ -124,7 +124,7 @@
         <mariadb.version>1.2.3</mariadb.version>
         <postgresql.version>9.2-1003-jdbc4</postgresql.version>
         <derby.version>10.10.1.1</derby.version>
-        <jackson4s.version>3.2.10</jackson4s.version>
+        <jackson4s.version>3.4.0</jackson4s.version>
         <mockito.version>1.10.19</mockito.version>
         <common.utils.version>0.8.0-SNAPSHOT</common.utils.version>
         <guava.version>18.0</guava.version>

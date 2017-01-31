@@ -19,13 +19,14 @@ import java.sql.Timestamp
 
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.expressions.{GenericRow, GenericRowWithSchema}
-import org.apache.spark.sql.catalyst.util.{DateTimeUtils, ArrayBasedMapData => ArrayBasedMapDataNotDeprecated, ArrayData => ArrayDataNotDeprecated, MapData => MapDataNotDeprecated}
+import org.apache.spark.sql.catalyst.util.DateTimeUtils
+//import org.apache.spark.sql.catalyst.util.{DateTimeUtils, ArrayBasedMapData => ArrayBasedMapDataNotDeprecated,ArrayData => ArrayDataNotDeprecated, MapData => MapDataNotDeprecated}
 import org.apache.spark.sql.types._
 import org.json4s.JsonAST.{JNumber, JObject}
 import org.json4s.JsonDSL._
 import org.json4s._
 
-import scala.collection.mutable
+//import scala.collection.mutable
 
 case class RowSerializer(providedSchema: StructType) extends Serializer[Row] {
 
@@ -57,12 +58,12 @@ case class RowSerializer(providedSchema: StructType) extends Serializer[Row] {
       case (BooleanType, JBool(v)) => v
       case (udt: UserDefinedType[_], jobj) => extractField(udt.sqlType -> jobj)
       case (ArrayType(ty, _), JArray(arr)) =>
-        mutable.WrappedArray make arr.map(extractField(ty, _)).toArray
+        arr.map(extractField(ty, _)).toArray
       /* Maps will be serialized as sub-objects so keys are constrained to be strings */
       case (MapType(kt, vt, _), JObject(JField("map", JObject(JField("keys", JArray(mapKeys)) :: JField("values", JArray(mapValues)) :: _) ) :: _)) =>
         val unserKeys = mapKeys map (jval => extractField(kt, jval))
         val unserValues = mapValues map (jval => extractField(vt, jval))
-        ArrayBasedMapDataNotDeprecated(unserKeys.toArray, unserValues.toArray)
+        (unserKeys zip unserValues) toMap
       case (st: StructType, JObject(JField("values",JArray(values))::_)) =>
         deserializeWithSchema(st, values, true)
     }
@@ -104,13 +105,14 @@ case class RowSerializer(providedSchema: StructType) extends Serializer[Row] {
       case (udt: UserDefinedType[_], v) => serializeField(udt.sqlType -> v)
       case (ArrayType(ty, _), v) =>
         v match {
-          case v: ArrayDataNotDeprecated => JArray(v.array.toList.map(v => Extraction.decompose(v)))
-          case v: mutable.WrappedArray[_] => JArray(v.toList.map(v => Extraction.decompose(v)))
+         /* case v: ArrayDataNotDeprecated => JArray(v.array.toList.map(v => Extraction.decompose(v)))
+          case v: mutable.WrappedArray[_] => JArray(v.toList.map(v => Extraction.decompose(v)))*/
+          case v: Array[_] => JArray(v.toList.map(v => Extraction.decompose(serializeField(ty -> v))))
         }
-      case (MapType(kt, vt, _), v: MapDataNotDeprecated) =>
+      case (MapType(kt, vt, _), v: Map[_, _]) =>
         /* Maps will be serialized as sub-objects so keys are constrained to be strings */
-        val serKeys = v.keyArray().array.map(v => serializeField(kt -> v))
-        val serValues = v.valueArray.array.map(v => serializeField(vt -> v))
+        val serKeys = v.keys.map(v => serializeField(kt -> v))
+        val serValues = v.values.map(v => serializeField(vt -> v))
         JField("map",
           JObject(
             JField("keys", JArray(serKeys.toList)),
